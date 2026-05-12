@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+
+    <title>AI Surveillance Dashboard</title>
+
+    <style>
+
+        body{
+            margin:0;
+            background:#111;
+            color:white;
+            font-family:Arial;
+        }
+
+        .header{
+            background:#1a1a1a;
+            padding:15px;
+            text-align:center;
+            font-size:28px;
+            font-weight:bold;
+        }
+
+        .container{
+            display:flex;
+            height:calc(100vh - 70px);
+        }
+
+        .video-section{
+            flex:3;
+            padding:20px;
+        }
+
+        .analytics-section{
+            flex:1;
+            background:#1c1c1c;
+            padding:20px;
+            border-left:2px solid #333;
+        }
+
+        .analytics-box{
+            background:#2a2a2a;
+            margin-bottom:20px;
+            padding:15px;
+            border-radius:10px;
+        }
+
+        .analytics-title{
+            font-size:20px;
+            margin-bottom:10px;
+            color:#00ffcc;
+        }
+
+        img{
+            width:100%;
+            border-radius:10px;
+            border:2px solid #333;
+        }
+
+        .alert{
+            color:red;
+            font-weight:bold;
+        }
+
+    </style>
+
+</head>
+
+<body>
+
+    <div class="header">
+        AI SURVEILLANCE DASHBOARD
+    </div>
+
+    <div class="container">
+
+        <div class="video-section">
+
+            <img src="/video">
+
+        </div>
+
+        <div class="analytics-section">
+
+            <div class="analytics-box">
+
+                <div class="analytics-title">
+                    SYSTEM STATUS
+                </div>
+
+                <p>AI Detection Active</p>
+                <p>Tracking Active</p>
+                <p>Heatmap Active</p>
+
+            </div>
+
+            <div class="analytics-box">
+
+                <div class="analytics-title">
+                    LIVE ANALYTICS
+                </div>
+
+                <p>Total People: <span id="people-count">0</span></p>
+
+<p>
+Threat Level:
+<span id="threat-level">
+LOW
+</span>
+</p>
+
+<p>
+Intrusions:
+<span id="intrusion-count">
+0
+</span>
+</p>
+
+<p>
+Fight Alerts:
+<span id="fight-count">
+0
+</span>
+</p>
+
+<p>
+Running Alerts:
+<span id="running-count">
+0
+</span>
+</p>
+
+            </div>
+
+            <div class="analytics-box">
+
+                <div class="analytics-title">
+                    LIVE ALERTS
+                </div>
+
+                <div id="alert-box">
+
+</div>
+
+            </div>
+
+        </div>
+
+    </div>
+
+<script>
+
+async function updateAnalytics(){
+
+    const response = await fetch('/api/stats')
+
+    const data = await response.json()
+
+    document.getElementById(
+        'people-count'
+    ).innerText = data.people
+
+    document.getElementById(
+        'threat-level'
+    ).innerText = data.threat
+
+    document.getElementById(
+        'intrusion-count'
+    ).innerText = data.intrusions
+
+    document.getElementById(
+        'fight-count'
+    ).innerText = data.fights
+
+    document.getElementById(
+        'running-count'
+    ).innerText = data.running
+
+}
+
+setInterval(updateAnalytics, 1000)
+async function updateAlerts(){
+
+    const response = await fetch('/api/alerts')
+
+    const alerts = await response.json()
+
+    let html = ""
+
+    alerts.slice().reverse().forEach(alert => {
+
+        html += `<p class="alert">${alert}</p>`
+
+    })
+
+    document.getElementById(
+        'alert-box'
+    ).innerHTML = html
+
+}
+
+setInterval(updateAlerts, 1000)
+
+</script>    
+</body>
+</html>
