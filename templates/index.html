@@ -1,70 +1,86 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 
 <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
     <title>AI Surveillance Dashboard</title>
 
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
     <style>
-
-        body{
-            margin:0;
-            background:#111;
-            color:white;
-            font-family:Arial;
+        body {
+            margin: 0;
+            background: #111;
+            color: white;
+            font-family: Arial;
         }
 
-        .header{
-            background:#1a1a1a;
-            padding:15px;
-            text-align:center;
-            font-size:28px;
-            font-weight:bold;
+        .header {
+            background: #1a1a1a;
+            padding: 15px;
+            text-align: center;
+            font-size: 28px;
+            font-weight: bold;
         }
 
-        .container{
-            display:flex;
-            height:calc(100vh - 70px);
+        .container {
+            display: flex;
+            height: calc(100vh - 70px);
         }
 
-        .video-section{
-            flex:3;
-            padding:20px;
+        .video-section {
+            flex: 3;
+            padding: 20px;
         }
 
-        .analytics-section{
-            flex:1;
-            background:#1c1c1c;
-            padding:20px;
-            border-left:2px solid #333;
+        .analytics-section {
+            flex: 1;
+            background: #1c1c1c;
+            padding: 20px;
+            border-left: 2px solid #333;
+            overflow-y: auto;
         }
 
-        .analytics-box{
-            background:#2a2a2a;
-            margin-bottom:20px;
-            padding:15px;
-            border-radius:10px;
+        .analytics-box {
+            background: #2a2a2a;
+            margin-bottom: 20px;
+            padding: 15px;
+            border-radius: 10px;
+        }
+        .graph-box {
+            height: 450px;
         }
 
-        .analytics-title{
-            font-size:20px;
-            margin-bottom:10px;
-            color:#00ffcc;
+        #analyticsChart {
+             width: 100% !important;
+            height: 400px !important;
         }
 
-        img{
-            width:100%;
-            border-radius:10px;
-            border:2px solid #333;
+        .analytics-title {
+            font-size: 20px;
+            margin-bottom: 10px;
+            color: #00ffcc;
         }
 
-        .alert{
-            color:red;
-            font-weight:bold;
+        img {
+            width: 100%;
+            border-radius: 10px;
+            border: 2px solid #333;
         }
 
+        .alert {
+            color: red;
+            font-weight: bold;
+        }
+
+        canvas {
+            background: #fff;
+            border-radius: 10px;
+            padding: 10px;
+        }
     </style>
-
 </head>
 
 <body>
@@ -75,15 +91,33 @@
 
     <div class="container">
 
+        <!-- VIDEO SECTION -->
         <div class="video-section">
-
-            <img src="/video">
-
+            <img src="/video" alt="Live Video Feed">
         </div>
 
+        <!-- ANALYTICS SECTION -->
         <div class="analytics-section">
 
+            <!-- SYSTEM STATUS -->
             <div class="analytics-box">
+                <div class="card">
+
+    <h2>EXPORT</h2>
+
+    <button onclick="downloadReport()" style="
+        padding: 10px;
+        width: 100%;
+        background: cyan;
+        border: none;
+        border-radius: 10px;
+        cursor: pointer;
+        font-weight: bold;
+    ">
+        Download Report
+    </button>
+
+</div>
 
                 <div class="analytics-title">
                     SYSTEM STATUS
@@ -95,6 +129,7 @@
 
             </div>
 
+            <!-- LIVE ANALYTICS -->
             <div class="analytics-box">
 
                 <div class="analytics-title">
@@ -103,45 +138,46 @@
 
                 <p>Total People: <span id="people-count">0</span></p>
 
-<p>
-Threat Level:
-<span id="threat-level">
-LOW
-</span>
-</p>
+                <p>
+                    Threat Level:
+                    <span id="threat-level">LOW</span>
+                </p>
 
-<p>
-Intrusions:
-<span id="intrusion-count">
-0
-</span>
-</p>
+                <p>
+                    Intrusions:
+                    <span id="intrusion-count">0</span>
+                </p>
 
-<p>
-Fight Alerts:
-<span id="fight-count">
-0
-</span>
-</p>
+                <p>
+                    Fight Alerts:
+                    <span id="fight-count">0</span>
+                </p>
 
-<p>
-Running Alerts:
-<span id="running-count">
-0
-</span>
-</p>
+                <p>
+                    Running Alerts:
+                    <span id="running-count">0</span>
+                </p>
 
             </div>
 
+            <div class="analytics-box graph-box">
+
+    <div class="analytics-title">
+        ANALYTICS GRAPH
+    </div>
+
+    <canvas id="analyticsChart"></canvas>
+
+</div>
+
+            <!-- LIVE ALERTS -->
             <div class="analytics-box">
 
                 <div class="analytics-title">
                     LIVE ALERTS
                 </div>
 
-                <div id="alert-box">
-
-</div>
+                <div id="alert-box"></div>
 
             </div>
 
@@ -149,59 +185,147 @@ Running Alerts:
 
     </div>
 
-<script>
+    <script>
+        function sendGraphToServer() {
 
-async function updateAnalytics(){
+    const canvas = document.getElementById('analyticsChart');
 
-    const response = await fetch('/api/stats')
+    const imageData = canvas.toDataURL("image/png");
 
-    const data = await response.json()
-
-    document.getElementById(
-        'people-count'
-    ).innerText = data.people
-
-    document.getElementById(
-        'threat-level'
-    ).innerText = data.threat
-
-    document.getElementById(
-        'intrusion-count'
-    ).innerText = data.intrusions
-
-    document.getElementById(
-        'fight-count'
-    ).innerText = data.fights
-
-    document.getElementById(
-        'running-count'
-    ).innerText = data.running
+    fetch('/save_graph', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ image: imageData })
+    });
 
 }
-
-setInterval(updateAnalytics, 1000)
-async function updateAlerts(){
-
-    const response = await fetch('/api/alerts')
-
-    const alerts = await response.json()
-
-    let html = ""
-
-    alerts.slice().reverse().forEach(alert => {
-
-        html += `<p class="alert">${alert}</p>`
-
-    })
-
-    document.getElementById(
-        'alert-box'
-    ).innerHTML = html
-
+        function downloadReport() {
+    window.open('/download_report', '_blank');
 }
 
-setInterval(updateAlerts, 1000)
+        // =========================
+        // UPDATE ANALYTICS
+        // =========================
+        async function updateAnalytics() {
 
-</script>    
+            try {
+
+                const response = await fetch('/api/stats');
+                const data = await response.json();
+
+                document.getElementById('people-count').innerText = data.people;
+                document.getElementById('threat-level').innerText = data.threat;
+                document.getElementById('intrusion-count').innerText = data.intrusions;
+                document.getElementById('fight-count').innerText = data.fights;
+                document.getElementById('running-count').innerText = data.running;
+
+            } catch (error) {
+                console.log("Analytics Error:", error);
+            }
+        }
+
+        setInterval(updateAnalytics, 1000);
+        setInterval(sendGraphToServer, 5000);
+
+        // =========================
+        // UPDATE ALERTS
+        // =========================
+        async function updateAlerts() {
+
+            try {
+
+                const response = await fetch('/api/alerts');
+                const alerts = await response.json();
+
+                let html = "";
+
+                alerts.slice().reverse().forEach(alert => {
+                    html += `<p class="alert">${alert}</p>`;
+                });
+
+                document.getElementById('alert-box').innerHTML = html;
+
+            } catch (error) {
+                console.log("Alerts Error:", error);
+            }
+        }
+
+        setInterval(updateAlerts, 1000);
+
+        // =========================
+        // CHART INITIALIZATION
+        // =========================
+        let chart;
+
+        function initChart() {
+
+            const ctx = document.getElementById('analyticsChart').getContext('2d');
+
+            chart = new Chart(ctx, {
+
+                type: 'line',
+
+                data: {
+                    labels: [],
+                    datasets: [
+                        {
+                            label: 'People',
+                            data: [],
+                            borderWidth: 2
+                        },
+                        {
+                            label: 'Running',
+                            data: [],
+                            borderWidth: 2
+                        },
+                        {
+                            label: 'Intrusion',
+                            data: [],
+                            borderWidth: 2
+                        }
+                    ]
+                },
+
+                options: {
+                responsive: true,
+                maintainAspectRatio: false
+            }
+
+            });
+        }
+
+        // =========================
+        // UPDATE GRAPH
+        // =========================
+        async function updateChart() {
+
+            try {
+
+                const response = await fetch('/api/graph');
+                const data = await response.json();
+
+                chart.data.labels = data.time;
+
+                chart.data.datasets[0].data = data.people;
+                chart.data.datasets[1].data = data.running;
+                chart.data.datasets[2].data = data.intrusion;
+
+                chart.update();
+
+            } catch (error) {
+                console.log("Chart Error:", error);
+            }
+        }
+
+        // START
+        initChart();
+
+        setInterval(updateChart, 1000);
+
+    </script>
+
 </body>
+
 </html>
