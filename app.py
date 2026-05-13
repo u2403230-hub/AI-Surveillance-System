@@ -1,7 +1,6 @@
-from flask import Flask, render_template, Response, jsonify
+from flask import Flask, render_template, Response, jsonify, request, send_file
 from ultralytics import YOLO
 from deep_sort_realtime.deepsort_tracker import DeepSort
-from flask import request
 
 import cv2
 import numpy as np
@@ -9,7 +8,10 @@ import time
 import webbrowser
 import threading
 import base64
+import os
 
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Image
+from reportlab.lib.styles import getSampleStyleSheet
 
 # =========================
 # FLASK APP
@@ -17,20 +19,13 @@ import base64
 app = Flask(__name__)
 
 # =========================
-# LOAD YOLO MODEL
+# LOAD MODEL + VIDEO
 # =========================
 model = YOLO("yolov8n.pt")
-
-# =========================
-# LOAD VIDEO
-# =========================
 cap = cv2.VideoCapture("test.mp4")
 
 print("Video Opened:", cap.isOpened())
 
-# =========================
-# DEEPSORT TRACKER
-# =========================
 tracker = DeepSort(max_age=30)
 
 # =========================
@@ -42,99 +37,61 @@ frame_height = 480
 # =========================
 # HEATMAP
 # =========================
-heatmap = np.zeros(
-    (frame_height, frame_width),
-    dtype=np.float32
-)
+heatmap = np.zeros((frame_height, frame_width), dtype=np.float32)
 
 # =========================
-# LIVE ANALYTICS
+# GLOBAL VARIABLES
 # =========================
 total_people = 0
 threat_level = "LOW"
 intrusion_count = 0
-fight_count = 0
 running_count = 0
- # =========================
- # ANALYTICS HISTORY
- # =========================
+fight_count = 0
+
 people_history = []
 running_history = []
 intrusion_history = []
 time_history = []
 
-# =========================
-# ALERT SYSTEM
-# =========================
 event_log = []
+track_positions = {}
 
 # =========================
-# TRACK POSITIONS
+# EMAIL SIMULATION
 # =========================
-track_positions = {}
+def send_email():
+    current_time = time.strftime("%H:%M:%S")
+    message = f"[{current_time}] 📧 Email Alert Sent (Simulated)"
+    print(message)
+    event_log.append(message)
 
 # =========================
 # FRAME GENERATOR
 # =========================
 def generate_frames():
 
-    global total_people
-    global threat_level
-    global heatmap
-    global running_count
-    global track_positions
-    global event_log
-    global intrusion_count
-   
+    global total_people, threat_level, heatmap
+    global running_count, intrusion_count
+    global track_positions, event_log
 
     while True:
 
         try:
-
             success, frame = cap.read()
 
-            # Restart video when finished
             if not success:
-
                 cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
                 continue
 
-            # Safety check
-            if frame is None:
-                continue
+            frame = cv2.resize(frame, (frame_width, frame_height))
 
-            # Resize frame
-            frame = cv2.resize(
-                frame,
-                (frame_width, frame_height)
-            )
             # =========================
             # RESTRICTED ZONE
             # =========================
+            zone_x1, zone_y1 = 250, 150
+            zone_x2, zone_y2 = 500, 400
 
-            zone_x1 = 250
-            zone_y1 = 150
-
-            zone_x2 = 500
-            zone_y2 = 400
-
-            cv2.rectangle(
-                frame,
-                (zone_x1, zone_y1),
-                (zone_x2, zone_y2),
-                (0, 0, 255),
-                 2
-            )
-
-            cv2.putText(
-                frame,
-                "RESTRICTED ZONE",
-                (zone_x1, zone_y1 - 10),
-                 cv2.FONT_HERSHEY_SIMPLEX,
-                0.7,
-                (0, 0, 255),
-                2
-            )
+            cv2.rectangle(frame, (zone_x1, zone_y1), (zone_x2, zone_y2), (0,0,255), 2)
 
             # =========================
             # YOLO DETECTION
@@ -142,93 +99,49 @@ def generate_frames():
             results = model(frame)
 
             detections = []
-
             people_count = 0
 
             for result in results:
-
-                boxes = result.boxes
-
-                for box in boxes:
-
+                for box in result.boxes:
                     cls = int(box.cls[0])
+                    conf = float(box.conf[0])
 
-                    confidence = float(box.conf[0])
-
-                    # PERSON CLASS
-                    if cls == 0 and confidence > 0.4:
-
-                        x1, y1, x2, y2 = map(
-                            int,
-                            box.xyxy[0]
-                        )
-
-                        detections.append(
-                            (
-                                [x1, y1, x2 - x1, y2 - y1],
-                                confidence,
-                                'person'
-                            )
-                        )
-
+                    if cls == 0 and conf > 0.4:
+                        x1, y1, x2, y2 = map(int, box.xyxy[0])
+                        detections.append(([x1, y1, x2-x1, y2-y1], conf, 'person'))
                         people_count += 1
 
             total_people = people_count
 
+            # =========================
+            # GRAPH DATA
+            # =========================
             current_time = time.strftime("%H:%M:%S")
-
             people_history.append(total_people)
             running_history.append(running_count)
             intrusion_history.append(intrusion_count)
             time_history.append(current_time)
 
-            # Keep only last 20 points (for clean graph)
             if len(people_history) > 20:
-             people_history.pop(0)
-             running_history.pop(0)
-             intrusion_history.pop(0)
-             time_history.pop(0)
+                people_history.pop(0)
+                running_history.pop(0)
+                intrusion_history.pop(0)
+                time_history.pop(0)
 
             # =========================
             # THREAT LEVEL
             # =========================
             if total_people >= 8:
-
                 threat_level = "HIGH"
-
             elif total_people >= 4:
-
                 threat_level = "MEDIUM"
-
             else:
-
                 threat_level = "LOW"
-
-            # =========================
-            # CROWD ALERT
-            # =========================
-            current_time = time.strftime("%H:%M:%S")
-
-            if total_people >= 5:
-
-                crowd_alert = (
-                    f"[{current_time}] Crowd Activity Detected"
-                )
-
-                if crowd_alert not in event_log:
-
-                    event_log.append(crowd_alert)
-
-                    if len(event_log) > 10:
-                        event_log.pop(0)
 
             # =========================
             # TRACKING
             # =========================
-            tracks = tracker.update_tracks(
-                detections,
-                frame=frame
-            )
+            tracks = tracker.update_tracks(detections, frame=frame)
 
             for track in tracks:
 
@@ -236,439 +149,164 @@ def generate_frames():
                     continue
 
                 track_id = track.track_id
+                x1, y1, x2, y2 = map(int, track.to_ltrb())
 
-                ltrb = track.to_ltrb()
+                cv2.rectangle(frame, (x1,y1), (x2,y2), (0,255,0), 2)
+                cv2.putText(frame, f"ID {track_id}", (x1,y1-10),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0,255,0), 2)
 
-                x1, y1, x2, y2 = map(int, ltrb)
+                cx = int((x1+x2)/2)
+                cy = int((y1+y2)/2)
 
-                # =========================
-                # DRAW BOUNDING BOX
-                # =========================
-                cv2.rectangle(
-                    frame,
-                    (x1, y1),
-                    (x2, y2),
-                    (0, 255, 0),
-                    2
-                )
+                cv2.circle(heatmap, (cx,cy), 20, 1, -1)
 
                 # =========================
-                # TRACK ID
-                # =========================
-                cv2.putText(
-                    frame,
-                    f"ID {track_id}",
-                    (x1, y1 - 10),
-                    cv2.FONT_HERSHEY_SIMPLEX,
-                    0.6,
-                    (0, 255, 0),
-                    2
-                )
-
-                # =========================
-                # CENTER POINT
-                # =========================
-                center_x = int((x1 + x2) / 2)
-                center_y = int((y1 + y2) / 2)
-
-                # =========================
-                # HEATMAP
-                # =========================
-                cv2.circle(
-                    heatmap,
-                    (center_x, center_y),
-                    20,
-                    1,
-                    -1
-                )
-
-                # =========================
-                # RUNNING DETECTION
+                # RUNNING DETECTION + SCREENSHOT
                 # =========================
                 if track_id in track_positions:
+                    px, py = track_positions[track_id]
 
-                    prev_x, prev_y = track_positions[track_id]
+                    dist = np.sqrt((cx-px)**2 + (cy-py)**2)
 
-                    distance = np.sqrt(
-                        (center_x - prev_x) ** 2 +
-                        (center_y - prev_y) ** 2
-                    )
+                    if dist > 80:
 
-                    # RUNNING THRESHOLD
-                    if distance > 80:
+                        running_count += 1
 
-                        alert_key = f"RUN_{track_id}"
+                        t = time.strftime("%Y%m%d_%H%M%S")
+                        filename = f"evidence/screenshots/running_ID{track_id}_{t}.jpg"
+                        cv2.imwrite(filename, frame)
 
-                        if (
-                            len(event_log) == 0
-                            or event_log[-1] != alert_key
-                        ):
+                        event_log.append(f"[{time.strftime('%H:%M:%S')}] Running - ID {track_id}")
 
-                            running_count = min(
-                                running_count + 1,
-                                50
-                            )
+                        cv2.putText(frame, "RUNNING", (x1,y1-40),
+                                    cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0,0,255), 2)
 
-                            event_log.append(alert_key)
-
-                            event_log.append(
-                                f"[{current_time}] Running Detected - ID {track_id}"
-                            )
-
-                            if len(event_log) > 10:
-                                event_log.pop(0)
-
-                            # ALERT TEXT
-                            cv2.putText(
-                                frame,
-                                "RUNNING DETECTED",
-                                (x1, y1 - 40),
-                                cv2.FONT_HERSHEY_SIMPLEX,
-                                0.8,
-                                (0, 0, 255),
-                                2
-                            )
                 # =========================
-                # INTRUSION DETECTION
+                # INTRUSION + SCREENSHOT
                 # =========================
+                if zone_x1 < cx < zone_x2 and zone_y1 < cy < zone_y2:
 
-                if (
+                    intrusion_count += 1
 
-                     center_x > zone_x1 and
-                     center_x < zone_x2 and
-                     center_y > zone_y1 and
-                     center_y < zone_y2
+                    t = time.strftime("%Y%m%d_%H%M%S")
+                    filename = f"evidence/screenshots/intrusion_ID{track_id}_{t}.jpg"
+                    cv2.imwrite(filename, frame)
 
-):
+                    event_log.append(f"[{time.strftime('%H:%M:%S')}] Intrusion - ID {track_id}")
 
-                  intrusion_count += 1
+                    cv2.rectangle(frame,(x1,y1),(x2,y2),(0,0,255),3)
 
-                  current_time = time.strftime("%H:%M:%S")
-
-                  intrusion_alert = (
-                    f"[{current_time}] Intrusion Detected - ID {track_id}"
-    )
-
-                  if intrusion_alert not in event_log:
-
-                   event_log.append(intrusion_alert)
-
-                   if len(event_log) > 10:
-                     event_log.pop(0)
-
-                # RED WARNING BOX
-                cv2.rectangle(
-                  frame,
-                  (x1, y1),
-                  (x2, y2),
-                  (0, 0, 255),
-                   3
-    )
-
-                cv2.putText(
-                   frame,
-                   "INTRUSION ALERT",
-                   (x1, y1 - 60),
-                    cv2.FONT_HERSHEY_SIMPLEX,
-                    0.8,
-                   (0, 0, 255),
-                    2
-    )
-                # =========================
-                # SAVE POSITION
-                # =========================
-                track_positions[track_id] = (
-                    center_x,
-                    center_y
-                )
+                track_positions[track_id] = (cx,cy)
 
             # =========================
-            # HEATMAP DECAY
+            # HEATMAP
             # =========================
             heatmap *= 0.99
+            heat_blur = cv2.GaussianBlur(heatmap,(25,25),0)
+            heat_norm = cv2.normalize(heat_blur,None,0,255,cv2.NORM_MINMAX).astype(np.uint8)
+            heat_color = cv2.applyColorMap(heat_norm, cv2.COLORMAP_JET)
+            frame = cv2.addWeighted(frame,0.7,heat_color,0.3,0)
 
             # =========================
-            # HEATMAP BLUR
+            # TEXT
             # =========================
-            heatmap_blur = cv2.GaussianBlur(
-                heatmap,
-                (25, 25),
-                0
-            )
+            cv2.putText(frame, f"People: {total_people}", (20,80),
+                        cv2.FONT_HERSHEY_SIMPLEX,1,(0,255,255),2)
 
             # =========================
-            # NORMALIZE HEATMAP
+            # STREAM
             # =========================
-            heatmap_norm = cv2.normalize(
-                heatmap_blur,
-                None,
-                0,
-                255,
-                cv2.NORM_MINMAX
-            ).astype(np.uint8)
-
-            # =========================
-            # APPLY COLORMAP
-            # =========================
-            heatmap_color = cv2.applyColorMap(
-                heatmap_norm,
-                cv2.COLORMAP_JET
-            )
-
-            # =========================
-            # OVERLAY HEATMAP
-            # =========================
-            frame = cv2.addWeighted(
-                frame,
-                0.7,
-                heatmap_color,
-                0.3,
-                0
-            )
-
-            # =========================
-            # DASHBOARD TITLE
-            # =========================
-            cv2.putText(
-                frame,
-                "AI SURVEILLANCE SYSTEM",
-                (20, 40),
-                cv2.FONT_HERSHEY_SIMPLEX,
-                1,
-                (255, 255, 255),
-                2
-            )
-
-            # =========================
-            # PEOPLE COUNT
-            # =========================
-            cv2.putText(
-                frame,
-                f"People Count: {total_people}",
-                (20, 90),
-                cv2.FONT_HERSHEY_SIMPLEX,
-                1,
-                (0, 255, 255),
-                2
-            )
-
-            # =========================
-            # THREAT COLOR
-            # =========================
-            threat_color = (0, 255, 0)
-
-            if threat_level == "MEDIUM":
-
-                threat_color = (0, 165, 255)
-
-            elif threat_level == "HIGH":
-
-                threat_color = (0, 0, 255)
-
-            # =========================
-            # THREAT TEXT
-            # =========================
-            cv2.putText(
-                frame,
-                f"Threat Level: {threat_level}",
-                (20, 140),
-                cv2.FONT_HERSHEY_SIMPLEX,
-                1,
-                threat_color,
-                3
-            )
-
-            # =========================
-            # ENCODE FRAME
-            # =========================
-            ret, buffer = cv2.imencode(
-                '.jpg',
-                frame,
-                [int(cv2.IMWRITE_JPEG_QUALITY), 80]
-            )
-
+            ret, buffer = cv2.imencode('.jpg', frame)
             frame = buffer.tobytes()
 
-            # =========================
-            # STREAM FRAME
-            # =========================
-            yield (
-                b'--frame\r\n'
-                b'Content-Type: image/jpeg\r\n\r\n'
-                + frame +
-                b'\r\n'
-            )
+            yield (b'--frame\r\nContent-Type: image/jpeg\r\n\r\n' + frame + b'\r\n')
 
         except Exception as e:
-
             print("FRAME ERROR:", e)
-
             continue
 
 # =========================
-# HOME PAGE
+# ROUTES
 # =========================
 @app.route('/')
 def index():
-
     return render_template('index.html')
 
-# =========================
-# VIDEO STREAM
-# =========================
 @app.route('/video')
 def video():
+    return Response(generate_frames(),
+        mimetype='multipart/x-mixed-replace; boundary=frame')
 
-    return Response(
-        generate_frames(),
-        mimetype='multipart/x-mixed-replace; boundary=frame'
-    )
-
-# =========================
-# LIVE ANALYTICS API
-# =========================
 @app.route('/api/stats')
 def stats():
-
     return jsonify({
-
         "people": total_people,
         "threat": threat_level,
         "intrusions": intrusion_count,
-        "fights": fight_count,
         "running": running_count
-
     })
 
-# =========================
-# LIVE ALERTS API
-# =========================
 @app.route('/api/alerts')
 def alerts():
+    return jsonify(event_log[-10:])
 
-    cleaned_alerts = [
-
-        alert for alert in event_log
-
-        if not alert.startswith("RUN_")
-    ]
-
-    return jsonify(cleaned_alerts)
-# =========================
-# ANALYTICS GRAPH API
-# =========================
 @app.route('/api/graph')
-def graph_data():
-
+def graph():
     return jsonify({
         "time": time_history,
         "people": people_history,
         "running": running_history,
         "intrusion": intrusion_history
     })
+
 @app.route('/save_graph', methods=['POST'])
 def save_graph():
-
     data = request.json['image']
-
-    image_data = data.split(",")[1]
-
+    img = base64.b64decode(data.split(",")[1])
     with open("graph.png", "wb") as f:
-        f.write(base64.b64decode(image_data))
-
+        f.write(img)
     return "OK"
-# =========================
-# PDF REPORT GENERATION
-# =========================
-from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
-from reportlab.lib.styles import getSampleStyleSheet
-from flask import send_file
-import os
 
+# =========================
+# PDF REPORT
+# =========================
 @app.route('/download_report')
 def download_report():
-    from reportlab.platypus import Image
 
     file_path = "analytics_report.pdf"
-
     doc = SimpleDocTemplate(file_path)
     styles = getSampleStyleSheet()
-
     content = []
 
-    # Title
     content.append(Paragraph("AI Surveillance Report", styles['Title']))
-    content.append(Spacer(1, 20))
+    content.append(Spacer(1,20))
 
-    # Summary
-    content.append(Paragraph(f"Total People Detected: {total_people}", styles['Normal']))
-    content.append(Paragraph(f"Running Events: {running_count}", styles['Normal']))
+    content.append(Paragraph(f"People: {total_people}", styles['Normal']))
+    content.append(Paragraph(f"Running: {running_count}", styles['Normal']))
     content.append(Paragraph(f"Intrusions: {intrusion_count}", styles['Normal']))
-    content.append(Paragraph(f"Threat Level: {threat_level}", styles['Normal']))
 
-    content.append(Spacer(1, 20))
+    content.append(Spacer(1,20))
 
-    # Event Logs
-    content.append(Paragraph("Event Logs:", styles['Heading2']))
-    content.append(Spacer(1, 10))
+    for e in event_log[-10:]:
+        content.append(Paragraph(e, styles['Normal']))
 
-    for event in event_log[-10:]:
-        content.append(Paragraph(event, styles['Normal']))
-        content.append(Spacer(1, 5))
-    # Add Graph Image
+    # Graph
     if os.path.exists("graph.png"):
+        content.append(Spacer(1,20))
+        content.append(Image("graph.png", width=400, height=200))
 
-      content.append(Spacer(1, 20))
-      content.append(Paragraph("Analytics Graph:", styles['Heading2']))
-      content.append(Spacer(1, 10))
-
-      content.append(Image("graph.png", width=400, height=200))
-    # Build PDF
     doc.build(content)
 
-    # Simulated Email Notification
-    event_log.append("📧 Email Alert Sent (Simulated)")
+    send_email()
 
     return send_file(file_path, as_attachment=True)
 
-
-    # Add Screenshots
-    content.append(Spacer(1, 20))
-    content.append(Paragraph("Captured Evidence:", styles['Heading2']))
-
-    screenshot_folder = "evidence/screenshots"
-
-    if os.path.exists(screenshot_folder):
-
-      images = os.listdir(screenshot_folder)[-3:]  # last 3 images
-
-      for img in images:
-
-        path = os.path.join(screenshot_folder, img)
-
-        content.append(Spacer(1, 10))
-        content.append(Image(path, width=300, height=200))
-    current_time = time.strftime("%Y-%m-%d %H:%M:%S")
-
-    content.append(Paragraph(f"Report Generated At: {current_time}", styles['Normal']))    
-
 # =========================
-# AUTO OPEN BROWSER
+# AUTO OPEN
 # =========================
 def open_browser():
+    webbrowser.open_new("http://127.0.0.1:5000")
 
-    webbrowser.open_new(
-        "http://127.0.0.1:5000"
-    )
-
-# =========================
-# MAIN
-# =========================
 if __name__ == '__main__':
-
-    threading.Timer(
-        1,
-        open_browser
-    ).start()
-
+    threading.Timer(1, open_browser).start()
     app.run(debug=False)
