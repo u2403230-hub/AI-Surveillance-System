@@ -9,6 +9,8 @@ import webbrowser
 import threading
 import base64
 import os
+import winsound   # (Windows only)
+import pywhatkit 
 
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Image
 from reportlab.lib.styles import getSampleStyleSheet
@@ -55,6 +57,10 @@ time_history = []
 
 event_log = []
 track_positions = {}
+alert_cooldown = {}
+
+
+whatsapp_alerted_ids = set()
 
 # =========================
 # EMAIL SIMULATION
@@ -144,7 +150,7 @@ def generate_frames():
             tracks = tracker.update_tracks(detections, frame=frame)
 
             for track in tracks:
-
+        
                 if not track.is_confirmed():
                     continue
 
@@ -170,7 +176,33 @@ def generate_frames():
 
                     if dist > 80:
 
+                     if track_id not in alert_cooldown:
+
+                        winsound.Beep(1000, 500)
+
+                         # 📱 WHATSAPP ALERT
+                        pywhatkit.sendwhatmsg_instantly(
+                           "+91 8590723110",
+                          f"🚨 Running detected! ID: {track_id}",
+                         wait_time=10
+        )
+
                         running_count += 1
+                        alert_cooldown[track_id] = time.time()
+
+                        winsound.Beep(1000, 500)  # 🔊 SOUND ALERT
+
+                        running_count += 1
+                        alert_cooldown[track_id] = time.time()
+
+                        t = time.strftime("%Y%m%d_%H%M%S")
+                        filename = f"evidence/screenshots/running_ID{track_id}_{t}.jpg"
+                        cv2.imwrite(filename, frame)
+
+                        event_log.append(f"[{time.strftime('%H:%M:%S')}] Running - ID {track_id}")
+
+                        running_count += 1
+                        alert_cooldown[track_id] = time.time()
 
                         t = time.strftime("%Y%m%d_%H%M%S")
                         filename = f"evidence/screenshots/running_ID{track_id}_{t}.jpg"
@@ -179,22 +211,48 @@ def generate_frames():
                         event_log.append(f"[{time.strftime('%H:%M:%S')}] Running - ID {track_id}")
 
                         cv2.putText(frame, "RUNNING", (x1,y1-40),
-                                    cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0,0,255), 2)
+                              cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0,0,255), 2)
 
                 # =========================
                 # INTRUSION + SCREENSHOT
                 # =========================
+                global whatsapp_sent
+
                 if zone_x1 < cx < zone_x2 and zone_y1 < cy < zone_y2:
 
-                    intrusion_count += 1
+                   if track_id not in alert_cooldown:
 
-                    t = time.strftime("%Y%m%d_%H%M%S")
-                    filename = f"evidence/screenshots/intrusion_ID{track_id}_{t}.jpg"
-                    cv2.imwrite(filename, frame)
+                     winsound.Beep(1500, 700)
 
-                    event_log.append(f"[{time.strftime('%H:%M:%S')}] Intrusion - ID {track_id}")
+                     # 📱 WHATSAPP ALERT (PASTE HERE)
+                     if track_id not in whatsapp_alerted_ids:
 
-                    cv2.rectangle(frame,(x1,y1),(x2,y2),(0,0,255),3)
+                       current_time = time.strftime("%H:%M:%S")
+
+                       pywhatkit.sendwhatmsg_instantly(
+                        "+91 828158714 ",
+                        f"🚨 Intrusion detected!\n"
+                        f"ID: {track_id}\n"
+                          f"Location: Main Gate, College Campus\n"
+                           f"Time: {current_time}",
+                          wait_time=10
+                    )
+
+                     whatsapp_alerted_ids.add(track_id)
+
+                intrusion_count += 1
+                alert_cooldown[track_id] = time.time()
+
+                t = time.strftime("%Y%m%d_%H%M%S")
+                filename = f"evidence/screenshots/intrusion_ID{track_id}_{t}.jpg"
+                cv2.imwrite(filename, frame)
+
+                event_log.append(f"[{time.strftime('%H:%M:%S')}] Intrusion - ID {track_id}")
+
+                
+                cv2.rectangle(frame,(x1,y1),(x2,y2),(0,0,255),3)
+                     
+                    
 
                 track_positions[track_id] = (cx,cy)
 
@@ -243,7 +301,8 @@ def stats():
         "people": total_people,
         "threat": threat_level,
         "intrusions": intrusion_count,
-        "running": running_count
+        "running": running_count,
+        "fights":fight_count
     })
 
 @app.route('/api/alerts')
