@@ -1,9 +1,10 @@
-zone_x1, zone_y1, zone_x2, zone_y2 = 200,100,500,400
-cx = (x1+x2)//2
-cy = (y1+y2)//2
+track_positions = {}
+if track_id in track_positions:
+    px, py = track_positions[track_id]
+    dist = ((cx-px)**2 + (cy-py)**2)**0.5
 
-if zone_x1 < cx < zone_x2 and zone_y1 < cy < zone_y2:
-    cv2.putText(frame,"INTRUSION",(x1,y1-30),
-                cv2.FONT_HERSHEY_SIMPLEX,0.7,(0,0,255),2)
+    if dist > 80:
+        cv2.putText(frame,"RUNNING",(x1,y1-50),
+                    cv2.FONT_HERSHEY_SIMPLEX,0.7,(0,0,255),2)
 
-cv2.rectangle(frame,(zone_x1,zone_y1),(zone_x2,zone_y2),(0,0,255),2)
+track_positions[track_id] = (cx,cy)
